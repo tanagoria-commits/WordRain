@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Rain — The Ancient Library</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Cinzel:wght@400;600&family=IM+Fell+English:ital@0;1&display=swap');
+
+  :root {
+    --bg-deep: #0a0608;
+    --bg-mid: #110d0f;
+    --parchment: #c8a96e;
+    --gold: #e8c87a;
+    --gold-bright: #ffd97d;
+    --ember: #ff6b35;
+    --cyan-glow: #7effd4;
+    --purple-mist: #9b59b6;
+    --word-normal: #b8e0ff;
+    --word-glow: #7ecfff;
+    --word-active: #ffe082;
+    --word-active-glow: #ffd740;
+    --danger: #ff4444;
+    --ui-bg: rgba(10, 4, 8, 0.85);
+    --ui-border: rgba(200, 169, 110, 0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+ /* СТАЛО — чистый рабочий вариант */
+body {
+  font-family: 'Cinzel', serif;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  user-select: none;
+}
+
+#scene {
+  position: fixed; inset: 0;
+  background: url('1.jpg') center/cover no-repeat;
+  z-index: 0;
+} 
+
+
+  /* Forest tree silhouettes via pseudo-elements on the scene wrapper */
+  #forest-layer {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* ── FOREST TREES (side panels) ── */
+  #bookshelf-left, #bookshelf-right {
+    position: fixed; top: 0; bottom: 0;
+    width: 130px;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  #bookshelf-left  { left: 0;  background: linear-gradient(90deg,  #010603 0%, #020a05 60%, transparent 100%); }
+  #bookshelf-right { right: 0; background: linear-gradient(270deg, #010603 0%, #020a05 60%, transparent 100%); }
+
+  /* SVG tree shapes drawn via box-shadow / clip-path tricks */
+  .tree {
+    position: absolute; bottom: 0;
+    background: #010804;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  }
+
+  /* Moss glow at base */
+  .shelf {
+    height: 6px;
+    background: linear-gradient(90deg, transparent, rgba(50,200,80,0.15), transparent);
+    margin-bottom: 0;
+    box-shadow: 0 0 20px rgba(50,200,80,0.12);
+  }
+
+  .books { display: none; }
+
+  /* ── FOREST GROUND GLOW ── */
+  #candles {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 90px; z-index: 2; pointer-events: none;
+    background: linear-gradient(0deg, rgba(10,30,15,0.95) 0%, transparent 100%);
+    box-shadow: 0 -4px 40px rgba(30,120,60,0.08);
+  }
+  .candle-wrap, .candle, .flame, .candle-glow { display: none; }
+
+  /* ── DUST PARTICLES ── */
+  #dust-canvas { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+
+  /* ── GAME AREA ── */
+  #game-area {
+    position: fixed; left: 130px; right: 130px; top: 0; bottom: 100px;
+    z-index: 10; overflow: hidden;
+  }
+
+  /* ── FALLING WORDS ── */
+  .falling-word {
+    position: absolute;
+    font-family: 'IM Fell English', serif;
+    font-size: clamp(18px, 2.5vw, 28px);
+    color: #a8f0c0;
+    text-shadow:
+      0 0 8px rgba(100,255,150,0.8),
+      0 0 20px rgba(100,255,150,0.4),
+      0 0 40px rgba(60,200,100,0.2);
+    white-space: nowrap;
+    letter-spacing: 0.08em;
+    transition: color 0.15s, text-shadow 0.15s;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .falling-word.active {
+    color: var(--word-active);
+    text-shadow:
+      0 0 8px rgba(255,215,64,0.9),
+      0 0 20px rgba(255,215,64,0.6),
+      0 0 50px rgba(255,215,64,0.3);
+    animation: pulse-active 1s ease-in-out infinite alternate;
+  }
+  .falling-word.matched-partial {
+    background: linear-gradient(90deg, var(--word-active) var(--match-pct, 0%), var(--word-normal) var(--match-pct, 0%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 6px rgba(255,215,64,0.5));
+  }
+  @keyframes pulse-active {
+    from { text-shadow: 0 0 8px rgba(255,215,64,0.9), 0 0 20px rgba(255,215,64,0.6), 0 0 50px rgba(255,215,64,0.3); }
+    to   { text-shadow: 0 0 12px rgba(255,215,64,1),   0 0 30px rgba(255,215,64,0.8), 0 0 70px rgba(255,215,64,0.4); }
+  }
+  .falling-word.dying {
+    animation: word-die 0.5s ease-out forwards;
+  }
+  @keyframes word-die {
+    0%   { opacity:1; transform: scale(1)    translateY(0);   filter: brightness(1); }
+    30%  { opacity:1; transform: scale(1.3)  translateY(-10px); filter: brightness(3) hue-rotate(30deg); }
+    100% { opacity:0; transform: scale(0.2)  translateY(-40px); filter: brightness(0); }
+  }
+  .falling-word.missed {
+    animation: word-miss 0.6s ease-out forwards;
+  }
+  @keyframes word-miss {
+    0%   { opacity:1; color: #ff6b6b; text-shadow: 0 0 20px #ff0000; }
+    100% { opacity:0; transform: translateY(20px); }
+  }
+
+  /* ── SPARKLES ── */
+  .sparkle {
+    position: absolute; pointer-events: none; z-index: 50;
+    animation: sparkle-burst 0.7s ease-out forwards;
+  }
+  @keyframes sparkle-burst {
+    0%   { opacity:1; transform: translate(0,0) scale(1); }
+    100% { opacity:0; transform: translate(var(--tx,0), var(--ty,0)) scale(0); }
+  }
+
+  /* ── HUD ── */
+  #hud {
+    position: fixed; top: 0; left: 130px; right: 130px;
+    height: 70px; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 30px;
+    background: linear-gradient(180deg, rgba(2,8,4,0.95) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(60,180,80,0.2);
+  }
+  .hud-block {
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 100px;
+  }
+  .hud-label {
+    font-family: 'Cinzel', serif;
+    font-size: 10px; letter-spacing: 0.3em;
+    color: var(--parchment); opacity: 0.6;
+    text-transform: uppercase;
+  }
+  .hud-value {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 28px; font-weight: 700;
+    color: var(--gold);
+    text-shadow: 0 0 10px rgba(232,200,122,0.5);
+    line-height: 1;
+  }
+  #timer-value { color: var(--gold-bright); }
+  #timer-value.urgent {
+    color: #ff6b35;
+    text-shadow: 0 0 15px rgba(255,107,53,0.8);
+    animation: urgent-pulse 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes urgent-pulse {
+    from { opacity:1; } to { opacity:0.6; }
+  }
+  #lives-value { color: #ff6b6b; letter-spacing: 0.1em; font-size: 22px; }
+
+  .title-hud {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 18px; color: var(--parchment);
+    text-shadow: 0 0 10px rgba(200,169,110,0.4);
+    letter-spacing: 0.15em;
+  }
+
+  /* ── INPUT BAR ── */
+  #input-bar {
+    position: fixed; bottom: 0; left: 130px; right: 130px;
+    height: 100px; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(0deg, rgba(2,8,4,0.98) 0%, transparent 100%);
+    border-top: 1px solid rgba(60,180,80,0.2);
+    gap: 16px;
+  }
+  #word-input {
+    font-family: 'IM Fell English', serif;
+    font-size: 22px; letter-spacing: 0.12em;
+    color: var(--gold-bright);
+    background: rgba(232,200,122,0.06);
+    border: 1px solid rgba(232,200,122,0.35);
+    border-radius: 4px;
+    padding: 12px 24px;
+    width: min(500px, 60vw);
+    outline: none;
+    text-align: center;
+    caret-color: var(--gold);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #word-input:focus {
+    border-color: rgba(232,200,122,0.7);
+    box-shadow: 0 0 20px rgba(232,200,122,0.15), inset 0 0 10px rgba(232,200,122,0.05);
+  }
+  #word-input::placeholder { color: rgba(200,169,110,0.3); font-style: italic; }
+
+  #restart-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 12px; letter-spacing: 0.2em;
+    color: var(--parchment);
+    background: transparent;
+    border: 1px solid rgba(200,169,110,0.35);
+    border-radius: 4px;
+    padding: 10px 20px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  #restart-btn:hover {
+    background: rgba(200,169,110,0.1);
+    border-color: rgba(200,169,110,0.7);
+    color: var(--gold);
+    box-shadow: 0 0 15px rgba(200,169,110,0.2);
+  }
+
+  /* ── DIFFICULTY BAR ── */
+  #diff-bar {
+    position: fixed; bottom: 105px; left: 130px; right: 130px;
+    z-index: 20; display: flex; justify-content: center; gap: 8px;
+  }
+  .diff-btn {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  padding: 5px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  
+  /* 🔥 Яркие стили для видимости */
+  color: var(--gold-bright);
+  text-shadow: 
+    0 0 6px rgba(255,217,125,0.8),
+    0 0 15px rgba(255,217,125,0.4);
+  background: rgba(10,6,8,0.7);
+  border: 1px solid rgba(255,217,125,0.6);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+
+.diff-btn:hover {
+  background: rgba(232,200,122,0.2);
+  border-color: var(--gold-bright);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(255,217,125,0.3);
+}
+
+.diff-btn.active {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255,255,255,0.9);
+  background: linear-gradient(135deg, rgba(232,200,122,0.3), rgba(255,217,125,0.2));
+  border-color: var(--gold-bright);
+  font-weight: 600;
+}
+
+  /* ── SETUP SCREEN ── */
+  #setup-screen {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse 80% 80% at 50% 50%, rgba(10,30,15,0.97) 0%, rgba(2,8,4,0.99) 100%);
+  }
+  .setup-panel {
+    background: rgba(4,14,6,0.97);
+    border: 1px solid rgba(60,180,80,0.25);
+    border-radius: 8px;
+    padding: 50px 60px;
+    width: min(600px, 90vw);
+    box-shadow:
+      0 0 60px rgba(60,180,80,0.06),
+      0 0 120px rgba(60,180,80,0.03),
+      inset 0 1px 0 rgba(60,180,80,0.15);
+    position: relative;
+  }
+  .setup-panel::before {
+    content: '✦ ✦ ✦';
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    color: rgba(200,169,110,0.4); font-size: 12px; letter-spacing: 0.5em;
+  }
+  .setup-title {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: clamp(24px, 5vw, 38px);
+    color: var(--gold);
+    text-align: center;
+    text-shadow: 0 0 20px rgba(232,200,122,0.4);
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+  }
+  .setup-subtitle {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    color: rgba(200,169,110,0.5);
+    text-align: center; font-size: 14px;
+    margin-bottom: 36px;
+    letter-spacing: 0.05em;
+  }
+  .setup-label {
+    font-family: 'Cinzel', serif; font-size: 11px;
+    letter-spacing: 0.25em; text-transform: uppercase;
+    color: rgba(200,169,110,0.6); margin-bottom: 10px;
+    display: block;
+  }
+  #words-input {
+    width: 100%; font-family: 'IM Fell English', serif;
+    font-size: 16px; line-height: 1.6;
+    color: var(--parchment);
+    background: rgba(232,200,122,0.04);
+    border: 1px solid rgba(200,169,110,0.3);
+    border-radius: 4px;
+    padding: 14px 18px; resize: vertical; min-height: 140px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #words-input:focus {
+    border-color: rgba(200,169,110,0.6);
+    box-shadow: 0 0 20px rgba(200,169,110,0.08);
+  }
+  #words-input::placeholder { color: rgba(200,169,110,0.25); font-style: italic; }
+  .word-count-hint {
+    font-family: 'Cinzel', serif; font-size: 10px;
+    color: rgba(200,169,110,0.4); text-align: right;
+    margin-top: 6px; letter-spacing: 0.1em;
+  }
+  #word-count-display { color: var(--gold); }
+
+  .diff-setup {
+    display: flex; gap: 8px; margin: 20px 0 30px;
+  }
+  .diff-setup .diff-btn { flex: 1; text-align: center; }
+
+  #start-btn {
+    display: block; width: 100%;
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 16px; letter-spacing: 0.2em;
+    color: var(--bg-deep);
+    background: linear-gradient(135deg, #c8a96e 0%, #e8c87a 40%, #ffd97d 60%, #c8a96e 100%);
+    border: none; border-radius: 4px;
+    padding: 16px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.3s;
+    box-shadow: 0 0 30px rgba(232,200,122,0.3);
+    position: relative; overflow: hidden;
+  }
+  #start-btn::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  #start-btn:hover { box-shadow: 0 0 50px rgba(232,200,122,0.5); transform: translateY(-1px); }
+  #start-btn:hover::before { opacity: 1; }
+  #start-btn:active { transform: translateY(0); }
+  #start-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .start-error {
+    font-family: 'IM Fell English', serif; font-style: italic;
+    color: #ff6b6b; font-size: 13px; text-align: center;
+    margin-top: 10px; min-height: 20px;
+  }
+
+  /* ── GAME OVER ── */
+  #gameover-screen {
+    position: fixed; inset: 0; z-index: 100;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(2,8,4,0.92);
+  }
+  #gameover-screen.show { display: flex; animation: fade-in 0.5s ease; }
+  @keyframes fade-in { from { opacity:0; } to { opacity:1; } }
+  .gameover-panel {
+    background: rgba(4,14,6,0.98);
+    border: 1px solid rgba(60,180,80,0.25);
+    border-radius: 8px;
+    padding: 50px 70px;
+    text-align: center;
+    box-shadow: 0 0 80px rgba(60,180,80,0.08);
+  }
+  .gameover-title {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 36px; color: var(--gold);
+    text-shadow: 0 0 20px rgba(232,200,122,0.5);
+    margin-bottom: 10px;
+  }
+  .gameover-rune {
+    font-family: 'IM Fell English', serif; font-style: italic;
+    color: rgba(200,169,110,0.5); font-size: 15px; margin-bottom: 30px;
+  }
+  .gameover-score-label {
+    font-family: 'Cinzel', serif; font-size: 11px;
+    letter-spacing: 0.3em; color: rgba(200,169,110,0.5);
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  .gameover-score {
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 64px; color: var(--gold-bright);
+    text-shadow: 0 0 30px rgba(255,217,125,0.6);
+    margin-bottom: 8px; line-height: 1;
+  }
+  .gameover-words {
+    font-family: 'IM Fell English', serif; font-style: italic;
+    color: rgba(200,169,110,0.5); font-size: 14px; margin-bottom: 40px;
+  }
+  #play-again-btn {
+    font-family: 'Cinzel Decorative', cursive; font-size: 14px;
+    letter-spacing: 0.2em; color: var(--bg-deep);
+    background: linear-gradient(135deg, #c8a96e, #e8c87a, #ffd97d);
+    border: none; border-radius: 4px;
+    padding: 14px 40px; cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 30px rgba(232,200,122,0.3);
+    margin-right: 12px;
+  }
+  #play-again-btn:hover { box-shadow: 0 0 50px rgba(232,200,122,0.5); transform: translateY(-1px); }
+  #new-words-btn {
+    font-family: 'Cinzel', serif; font-size: 12px;
+    letter-spacing: 0.15em; color: var(--parchment);
+    background: transparent;
+    border: 1px solid rgba(200,169,110,0.35);
+    border-radius: 4px; padding: 13px 30px;
+    cursor: pointer; text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  #new-words-btn:hover { background: rgba(200,169,110,0.1); color: var(--gold); }
+
+  /* ── SCORE POP ── */
+  .score-pop {
+    position: fixed; pointer-events: none; z-index: 80;
+    font-family: 'Cinzel Decorative', cursive;
+    font-size: 22px; color: var(--gold-bright);
+    text-shadow: 0 0 15px rgba(255,217,125,0.8);
+    animation: score-pop-anim 0.8s ease-out forwards;
+  }
+  @keyframes score-pop-anim {
+    0%   { opacity:1; transform: translateY(0) scale(1.3); }
+    100% { opacity:0; transform: translateY(-60px) scale(0.8); }
+  }
+
+  /* ── MAGIC BURST CANVAS ── */
+  #burst-canvas { position: fixed; inset: 0; z-index: 15; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<!-- SCENE -->
+<div id="scene"></div>
+<div id="forest-layer"></div>
+
+<!-- BOOKSHELVES -->
+<div id="bookshelf-left"
+  <div class="books" id="books-left"></div>
+  <div class="shelf"></div>
+  <div class="books" id="books-left2" style="bottom:128px"></div>
+  <div class="shelf" style="margin-bottom:160px"></div>
+</div>
+<div id="bookshelf-right">
+  <div class="books" id="books-right"></div>
+  <div class="shelf"></div>
+  <div class="books" id="books-right2" style="bottom:128px"></div>
+  <div class="shelf" style="margin-bottom:160px"></div>
+</div>
+
+<!-- CANDLES -->
+<div id="candles">
+  <div class="candle-wrap"><div class="flame"></div><div class="candle"></div><div class="candle-glow"></div></div>
+  <div class="candle-wrap"><div class="flame"></div><div class="candle" style="height:38px"></div><div class="candle-glow"></div></div>
+  <div class="candle-wrap"><div class="flame"></div><div class="candle" style="height:55px"></div><div class="candle-glow"></div></div>
+  <div class="candle-wrap"><div class="flame"></div><div class="candle" style="height:42px"></div><div class="candle-glow"></div></div>
+  <div class="candle-wrap"><div class="flame"></div><div class="candle"></div><div class="candle-glow"></div></div>
+</div>
+
+<!-- PARTICLE CANVASES -->
+<canvas id="dust-canvas"></canvas>
+<canvas id="burst-canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-block">
+    <span class="hud-label">Score</span>
+    <span class="hud-value" id="score-value">0</span>
+  </div>
+  <div class="title-hud">Word Rain</div>
+  <div class="hud-block" style="flex-direction:row;gap:24px">
+    <div class="hud-block">
+      <span class="hud-label">Time</span>
+      <span class="hud-value" id="timer-value">65</span>
+    </div>
+    <div class="hud-block">
+      <span class="hud-label">Lives</span>
+      <span class="hud-value" id="lives-value">♥♥♥</span>
+    </div>
+  </div>
+</div>
+
+<!-- GAME AREA -->
+<div id="game-area"></div>
+
+<!-- DIFFICULTY BAR -->
+<div id="diff-bar">
+  <button class="diff-btn active" data-diff="easy">Easy</button>
+  <button class="diff-btn" data-diff="medium">Normal</button>
+  <button class="diff-btn" data-diff="hard">Hard</button>
+</div>
+
+<!-- INPUT BAR -->
+<div id="input-bar">
+  <input type="text" id="word-input" placeholder="Type words here..." autocomplete="off" spellcheck="false">
+  <button id="restart-btn">↺ Restart</button>
+</div>
+
+<!-- SETUP SCREEN -->
+<div id="setup-screen">
+  <div class="setup-panel">
+    <div class="setup-title">Word Rain</div>
+    <div class="setup-subtitle">— Trial of the Ancient Library —</div>
+
+    <label class="setup-label">Your Incantations (words)</label>
+    <textarea id="words-input" placeholder="Enter 3 to 10 words&#10;one per line or separated by commas&#10;&#10;Example:&#10;dragon&#10;wizard&#10;sorcery"></textarea>
+    <div class="word-count-hint">Words: <span id="word-count-display">0</span> / 10</div>
+
+    <label class="setup-label" style="margin-top:20px">Difficulty</label>
+    <div class="diff-setup" id="diff-setup">
+      <button class="diff-btn active" data-diff="easy">Easy</button>
+      <button class="diff-btn" data-diff="medium">Normal</button>
+      <button class="diff-btn" data-diff="hard">Hard</button>
+    </div>
+
+    <button id="start-btn">✦ Begin the Trial ✦</button>
+    <div class="start-error" id="start-error"></div>
+  </div>
+</div>
+
+<!-- GAMEOVER SCREEN -->
+<div id="gameover-screen">
+  <div class="gameover-panel">
+    <div class="gameover-title">Game Over</div>
+    <div class="gameover-rune">— Time has run out, mage —</div>
+    <div class="gameover-score-label">Final Score</div>
+    <div class="gameover-score" id="final-score">0</div>
+    <div class="gameover-words" id="final-words">Words dispelled: 0</div>
+    <button id="play-again-btn">↺ Play Again</button>
+    <button id="new-words-btn">✎ New Words</button>
+  </div>
+</div>
+
+<script>
+// ── FOREST TREE BUILDER ──
+function buildTrees(containerId, side) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const w = 130, h = window.innerHeight;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', w); svg.setAttribute('height', h);
+  svg.style.cssText = 'position:absolute;inset:0;';
+
+  const treeData = [
+    { x: side === 'left' ? 90 : 40,  baseY: h, trunkH: 160, trunkW: 18, layers: 4, spread: 78, color: '#010d04' },
+    { x: side === 'left' ? 40 : 90,  baseY: h, trunkH: 120, trunkW: 14, layers: 3, spread: 60, color: '#010b03' },
+    { x: side === 'left' ? 115 : 15, baseY: h, trunkH: 200, trunkW: 22, layers: 5, spread: 90, color: '#010e05' },
+    { x: side === 'left' ? 20 : 110, baseY: h, trunkH: 100, trunkW: 12, layers: 3, spread: 50, color: '#010a03' },
+  ];
+
+  for (const t of treeData) {
+    // Trunk
+    const trunk = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    trunk.setAttribute('x', t.x - t.trunkW/2);
+    trunk.setAttribute('y', t.baseY - t.trunkH);
+    trunk.setAttribute('width', t.trunkW);
+    trunk.setAttribute('height', t.trunkH);
+    trunk.setAttribute('fill', t.color);
+    svg.appendChild(trunk);
+
+    // Foliage layers (triangles, bottom to top)
+    for (let i = 0; i < t.layers; i++) {
+      const frac = i / t.layers;
+      const layerY = t.baseY - t.trunkH - i * (t.spread * 0.55);
+      const layerW = t.spread * (1 - frac * 0.45);
+      const layerH = t.spread * 0.7;
+      const tri = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const pts = `${t.x},${layerY - layerH} ${t.x - layerW/2},${layerY} ${t.x + layerW/2},${layerY}`;
+      tri.setAttribute('points', pts);
+      // Slight green tint on upper layers
+      const g = 10 + Math.round(i * 4);
+      tri.setAttribute('fill', `rgb(1,${g},2)`);
+      svg.appendChild(tri);
+    }
+
+    // Moss glow at base
+    const glow = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    glow.setAttribute('cx', t.x); glow.setAttribute('cy', t.baseY);
+    glow.setAttribute('rx', t.spread * 0.4); glow.setAttribute('ry', 6);
+    glow.setAttribute('fill', 'rgba(40,180,60,0.08)');
+    svg.appendChild(glow);
+  }
+  container.appendChild(svg);
+}
+
+
+// ── MAGICAL GLOWING ORBS (fly upward) ──
+const dustCanvas = document.getElementById('dust-canvas');
+const dctx = dustCanvas.getContext('2d');
+let dustParticles = [];
+function resizeDust() {
+  dustCanvas.width = window.innerWidth;
+  dustCanvas.height = window.innerHeight;
+}
+resizeDust();
+window.addEventListener('resize', resizeDust);
+
+const ORB_COLORS = [
+  [120, 255, 160],  // mint green
+  [80,  220, 255],  // cyan
+  [180, 255, 120],  // lime
+  [255, 220, 80],   // gold
+  [140, 255, 200],  // seafoam
+  [200, 140, 255],  // lavender
+];
+
+for (let i = 0; i < 70; i++) {
+  const col = ORB_COLORS[Math.floor(Math.random() * ORB_COLORS.length)];
+  dustParticles.push({
+    x: Math.random() * window.innerWidth,
+    y: window.innerHeight + Math.random() * window.innerHeight,
+    r: Math.random() * 2.5 + 0.8,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: -(Math.random() * 0.6 + 0.2),
+    alpha: Math.random() * 0.7 + 0.3,
+    pulse: Math.random() * Math.PI * 2,
+    col,
+    wobble: Math.random() * 0.02 + 0.005,
+    wobbleAmp: Math.random() * 1.5 + 0.5,
+  });
+}
+
+function animateDust(ts) {
+  dctx.clearRect(0, 0, dustCanvas.width, dustCanvas.height);
+  const t = ts / 1000;
+  for (const p of dustParticles) {
+    p.x += p.vx + Math.sin(t * p.wobble * 60 + p.pulse) * p.wobbleAmp * 0.05;
+    p.y += p.vy;
+    p.pulse += p.wobble;
+    if (p.y < -10) {
+      p.y = dustCanvas.height + 10;
+      p.x = Math.random() * dustCanvas.width;
+    }
+    const glow = p.r * (2.5 + 1.5 * Math.sin(t * 2 + p.pulse));
+    const a = p.alpha * (0.6 + 0.4 * Math.sin(t * 1.5 + p.pulse));
+    const [r, g, b] = p.col;
+
+    // Outer glow
+    const grad = dctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glow * 3);
+    grad.addColorStop(0,   `rgba(${r},${g},${b},${a})`);
+    grad.addColorStop(0.4, `rgba(${r},${g},${b},${a * 0.4})`);
+    grad.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+    dctx.beginPath();
+    dctx.arc(p.x, p.y, glow * 3, 0, Math.PI * 2);
+    dctx.fillStyle = grad;
+    dctx.fill();
+
+    // Core bright dot
+    dctx.beginPath();
+    dctx.arc(p.x, p.y, p.r * 0.6, 0, Math.PI * 2);
+    dctx.fillStyle = `rgba(255,255,255,${a * 0.9})`;
+    dctx.fill();
+  }
+  requestAnimationFrame(animateDust);
+}
+requestAnimationFrame(animateDust);
+
+// ── BURST CANVAS ──
+const burstCanvas = document.getElementById('burst-canvas');
+const bctx = burstCanvas.getContext('2d');
+let bursts = [];
+function resizeBurst() {
+  burstCanvas.width = window.innerWidth;
+  burstCanvas.height = window.innerHeight;
+}
+resizeBurst();
+window.addEventListener('resize', resizeBurst);
+
+function addBurst(x, y, color = '#ffd97d') {
+  const count = 16 + Math.floor(Math.random() * 12);
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
+    const speed = 2 + Math.random() * 4;
+    bursts.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: Math.random() * 3 + 1,
+      alpha: 1,
+      color,
+      life: 0.7 + Math.random() * 0.3
+    });
+  }
+  // Star sparks
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    bursts.push({
+      x, y,
+      vx: Math.cos(angle) * (6 + Math.random() * 5),
+      vy: Math.sin(angle) * (6 + Math.random() * 5),
+      r: Math.random() * 1.5 + 0.5,
+      alpha: 1,
+      color: '#ffffff',
+      life: 0.3 + Math.random() * 0.3
+    });
+  }
+}
+
+function animateBurst() {
+  bctx.clearRect(0, 0, burstCanvas.width, burstCanvas.height);
+  bursts = bursts.filter(p => p.alpha > 0.01);
+  for (const p of bursts) {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.08;
+    p.vx *= 0.97;
+    p.alpha -= p.life * 0.03;
+    bctx.beginPath();
+    bctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    const col = p.color;
+    bctx.fillStyle = col.startsWith('#')
+      ? hexToRgba(col, p.alpha)
+      : `rgba(255,217,125,${p.alpha})`;
+    bctx.fill();
+  }
+  requestAnimationFrame(animateBurst);
+}
+requestAnimationFrame(animateBurst);
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ── AUDIO ──
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+}
+function playSuccess() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const freqs = [523, 659, 784, 1047];
+  freqs.forEach((f, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.frequency.value = f;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0, t + i * 0.06);
+    gain.gain.linearRampToValueAtTime(0.12, t + i * 0.06 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.25);
+    osc.start(t + i * 0.06);
+    osc.stop(t + i * 0.06 + 0.3);
+  });
+}
+function playMiss() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.frequency.setValueAtTime(200, t);
+  osc.frequency.linearRampToValueAtTime(80, t + 0.3);
+  osc.type = 'sawtooth';
+  gain.gain.setValueAtTime(0.08, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  osc.start(t); osc.stop(t + 0.4);
+}
+
+// ── GAME STATE ──
+const DIFFICULTIES = {
+  easy:   { minSpeed: 25, maxSpeed: 50,  spawnInterval: 3000, maxWords: 3,  lives: 5, time: 90 },
+  medium: { minSpeed: 50, maxSpeed: 90, spawnInterval: 2200, maxWords: 5,  lives: 3, time: 75 },
+  hard:   { minSpeed: 80, maxSpeed: 140, spawnInterval: 1300, maxWords: 7,  lives: 3, time: 65 }
+};
+
+let gameWords = [];
+let difficulty = 'easy';
+let score = 0;
+let lives = 5;
+let timeLeft = 60;
+let wordsTyped = 0;
+let gameRunning = false;
+let gameLoop = null;
+let spawnTimer = null;
+let timerInterval = null;
+let lastTime = null;
+let fallingWords = []; // { el, word, x, y, speed, dying }
+let activeWord = null; // currently targeted word element
+
+const gameArea = document.getElementById('game-area');
+const wordInput = document.getElementById('word-input');
+const scoreVal = document.getElementById('score-value');
+const timerVal = document.getElementById('timer-value');
+const livesVal = document.getElementById('lives-value');
+
+// ── SETUP UI ──
+const setupScreen = document.getElementById('setup-screen');
+const wordsInputEl = document.getElementById('words-input');
+const wordCountDisplay = document.getElementById('word-count-display');
+const startBtn = document.getElementById('start-btn');
+const startError = document.getElementById('start-error');
+const diffBtns = document.querySelectorAll('[data-diff]');
+
+// Default words
+wordsInputEl.value = 'dragon\nwizard\nsorcery\nspell\nscroll\nrune\npotion\nancient';
+
+function countWords() {
+  const raw = wordsInputEl.value;
+  const words = parseWords(raw);
+  wordCountDisplay.textContent = words.length;
+  wordCountDisplay.style.color = words.length >= 3 && words.length <= 10 ? 'var(--gold)' : '#ff6b6b';
+}
+wordsInputEl.addEventListener('input', countWords);
+countWords();
+
+function parseWords(raw) {
+  return raw.split(/[\n,]+/).map(w => w.trim().toLowerCase()).filter(w => w.length > 0);
+}
+
+// Difficulty selection (setup + game)
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const diff = btn.dataset.diff;
+    difficulty = diff;
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll(`[data-diff="${diff}"]`).forEach(b => b.classList.add('active'));
+  });
+});
+
+startBtn.addEventListener('click', () => {
+  const words = parseWords(wordsInputEl.value);
+  if (words.length < 3) { startError.textContent = 'Please enter at least 3 words'; return; }
+  if (words.length > 10) { startError.textContent = 'Maximum 10 words allowed'; return; }
+  startError.textContent = '';
+  gameWords = words;
+  initAudio();
+  setupScreen.style.display = 'none';
+  startGame();
+});
+
+// ── RESTART ──
+document.getElementById('restart-btn').addEventListener('click', () => {
+  if (gameWords.length) startGame();
+});
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  document.getElementById('gameover-screen').classList.remove('show');
+  startGame();
+});
+document.getElementById('new-words-btn').addEventListener('click', () => {
+  document.getElementById('gameover-screen').classList.remove('show');
+  setupScreen.style.display = 'flex';
+  stopGame();
+});
+
+// ── GAME START ──
+function startGame() {
+  stopGame();
+  const cfg = DIFFICULTIES[difficulty];
+  score = 0; lives = cfg.lives; timeLeft = cfg.time; wordsTyped = 0;
+  updateHUD();
+  wordInput.value = '';
+  activeWord = null;
+  fallingWords = [];
+  gameArea.innerHTML = '';
+  wordInput.focus();
+  gameRunning = true;
+
+  // Timer
+  timerInterval = setInterval(() => {
+    if (!gameRunning) return;
+    timeLeft--;
+    updateHUD();
+    if (timeLeft <= 10) timerVal.classList.add('urgent');
+    if (timeLeft <= 0) endGame();
+  }, 1000);
+
+  // Spawn
+  spawnWord();
+  scheduleSpawn();
+
+  // Game loop
+  lastTime = performance.now();
+  gameLoop = requestAnimationFrame(gameFrame);
+}
+
+function stopGame() {
+  gameRunning = false;
+  if (timerInterval) clearInterval(timerInterval);
+  if (spawnTimer) clearTimeout(spawnTimer);
+  if (gameLoop) cancelAnimationFrame(gameLoop);
+  timerInterval = spawnTimer = gameLoop = null;
+  timerVal.classList.remove('urgent');
+}
+
+function endGame() {
+  stopGame();
+  // Animate remaining words away
+  fallingWords.forEach(fw => {
+    fw.el.classList.add('missed');
+    setTimeout(() => fw.el.remove(), 600);
+  });
+  fallingWords = [];
+  setTimeout(() => {
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('final-words').textContent = `Words dispelled: ${wordsTyped}`;
+    document.getElementById('gameover-screen').classList.add('show');
+  }, 400);
+}
+
+// ── SPAWN ──
+function scheduleSpawn() {
+  if (!gameRunning) return;
+  const cfg = DIFFICULTIES[difficulty];
+  const delay = cfg.spawnInterval * (0.7 + Math.random() * 0.6);
+  spawnTimer = setTimeout(() => {
+    if (!gameRunning) return;
+    if (fallingWords.filter(w => !w.dying).length < cfg.maxWords) spawnWord();
+    scheduleSpawn();
+  }, delay);
+}
+
+function spawnWord() {
+  const cfg = DIFFICULTIES[difficulty];
+  const word = gameWords[Math.floor(Math.random() * gameWords.length)];
+  const areaW = gameArea.offsetWidth;
+  const el = document.createElement('div');
+  el.className = 'falling-word';
+  el.textContent = word;
+  gameArea.appendChild(el);
+  const elW = el.offsetWidth || word.length * 16;
+  const x = 20 + Math.random() * Math.max(0, areaW - elW - 40);
+  const speed = cfg.minSpeed + Math.random() * (cfg.maxSpeed - cfg.minSpeed); // px/s
+  const fw = { el, word, x, y: -40, speed, dying: false, matched: 0 };
+  el.style.left = x + 'px';
+  el.style.top = '-40px';
+  fallingWords.push(fw);
+  updateActiveWord();
+}
+
+// ── GAME FRAME ──
+function gameFrame(ts) {
+  if (!gameRunning) return;
+  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+  const areaH = gameArea.offsetHeight;
+
+  for (let i = fallingWords.length - 1; i >= 0; i--) {
+    const fw = fallingWords[i];
+    if (fw.dying) continue;
+    fw.y += fw.speed * dt;
+    fw.el.style.top = fw.y + 'px';
+
+    if (fw.y > areaH) {
+      // Missed
+      fw.dying = true;
+      fw.el.classList.remove('active','matched-partial');
+      fw.el.classList.add('missed');
+      playMiss();
+      loseLife();
+      setTimeout(() => { fw.el.remove(); fallingWords.splice(fallingWords.indexOf(fw), 1); }, 600);
+      if (activeWord === fw) { activeWord = null; wordInput.value = ''; updateActiveWord(); }
+    }
+  }
+  gameLoop = requestAnimationFrame(gameFrame);
+}
+
+// ── INPUT ──
+wordInput.addEventListener('input', () => {
+  if (!gameRunning) return;
+  const typed = wordInput.value.trim().toLowerCase();
+  updateActiveWord(typed);
+  checkMatch(typed);
+});
+
+wordInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (!gameRunning) return;
+    const typed = wordInput.value.trim().toLowerCase();
+    checkMatch(typed, true);
+  }
+});
+
+function updateActiveWord(typed = '') {
+  // Find best matching word (starts with typed string, prefer active)
+  let best = null;
+  let bestScore = -1;
+  for (const fw of fallingWords) {
+    if (fw.dying) continue;
+    if (typed && fw.word.startsWith(typed)) {
+      const s = typed.length / fw.word.length;
+      if (s > bestScore) { bestScore = s; best = fw; }
+    }
+  }
+  // If no typed, keep activeWord or pick lowest
+  if (!typed) {
+    if (!activeWord || activeWord.dying) {
+      let lowest = null; let maxY = -Infinity;
+      for (const fw of fallingWords) {
+        if (!fw.dying && fw.y > maxY) { maxY = fw.y; lowest = fw; }
+      }
+      best = lowest;
+    } else { best = activeWord; }
+  }
+
+  // Update classes
+  for (const fw of fallingWords) {
+    if (fw.dying) continue;
+    fw.el.classList.remove('active','matched-partial');
+    fw.el.style.removeProperty('--match-pct');
+  }
+  if (best) {
+    activeWord = best;
+    if (typed && typed.length > 0) {
+      const pct = Math.round((typed.length / best.word.length) * 100);
+      best.el.classList.add('matched-partial');
+      best.el.style.setProperty('--match-pct', pct + '%');
+    } else {
+      best.el.classList.add('active');
+    }
+  }
+}
+
+function checkMatch(typed, force = false) {
+  for (let i = fallingWords.length - 1; i >= 0; i--) {
+    const fw = fallingWords[i];
+    if (fw.dying) continue;
+    if (fw.word === typed) {
+      wordSuccess(fw, i);
+      return;
+    }
+  }
+}
+
+function wordSuccess(fw, idx) {
+  const rect = fw.el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+
+  fw.dying = true;
+  fw.el.classList.remove('active','matched-partial');
+  fw.el.classList.add('dying');
+  playSuccess();
+  addBurst(cx, cy, '#ffd97d');
+  // Extra purple burst
+  setTimeout(() => addBurst(cx + (Math.random()-0.5)*20, cy + (Math.random()-0.5)*20, '#b39ddb'), 80);
+
+  score++;
+  wordsTyped++;
+  updateHUD();
+  showScorePop(cx, cy);
+  wordInput.value = '';
+  activeWord = null;
+
+  setTimeout(() => {
+    fw.el.remove();
+    const fi = fallingWords.indexOf(fw);
+    if (fi !== -1) fallingWords.splice(fi, 1);
+    updateActiveWord('');
+  }, 500);
+}
+
+function loseLife() {
+  lives--;
+  updateHUD();
+  if (lives <= 0) endGame();
+}
+
+function updateHUD() {
+  scoreVal.textContent = score;
+  timerVal.textContent = timeLeft;
+  const hearts = '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(Math.max(0, DIFFICULTIES[difficulty].lives - lives));
+  livesVal.textContent = hearts;
+}
+
+function showScorePop(x, y) {
+  const el = document.createElement('div');
+  el.className = 'score-pop';
+  el.textContent = '+1';
+  el.style.left = (x - 15) + 'px';
+  el.style.top = (y - 20) + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+// Keep focus on input
+document.addEventListener('keydown', e => {
+  if (gameRunning && e.key !== 'Tab') wordInput.focus();
+});
+wordInput.addEventListener('blur', () => {
+  if (gameRunning) setTimeout(() => wordInput.focus(), 50);
+});
+// Эти строки отсутствуют — добавь их!
+buildTrees('bookshelf-left', 'left');
+buildTrees('bookshelf-right', 'right');
+</script>
+</body>
+</html>
